@@ -1,0 +1,147 @@
+# Question 4: State-Space Estimation and Latent Variables
+# This Python script contains the code for each part (c to g) of Question 4.
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from statsmodels.tsa.statespace.mlemodel import MLEModel
+from scipy.optimize import minimize
+
+# PART (c): Simulate the UC model with ARMA(2,1) cycle
+np.random.seed(42)
+T = 300
+
+a = 0.02
+B1 = 0.8
+B2 = 0.0
+theta = 1.0
+sigma_e = np.sqrt(0.5)
+sigma_u = np.sqrt(0.5)
+
+e = np.random.normal(0, sigma_e, T)
+u = np.random.normal(0, sigma_u, T)
+
+# Simulate trend and cycle
+g = np.zeros(T)
+c = np.zeros(T)
+y = np.zeros(T)
+
+for t in range(2, T):
+    g[t] = g[t-1] + a + e[t]
+    c[t] = B1*c[t-1] + B2*c[t-2] + u[t] + theta*u[t-1]
+    y[t] = g[t] + c[t]
+
+# Plot Figure 1
+plt.figure(figsize=(10,5))
+plt.plot(y, label='y (Observed)')
+plt.plot(g, label='g (Trend)')
+plt.plot(c, label='c (Cycle)')
+plt.title("Figure 1: Simulated gt, ct and yt")
+plt.legend()
+plt.tight_layout()
+plt.savefig("Figure 1: Simulated gt, ct and yt.png")
+plt.close()
+
+# PART (d): Estimation using Kalman Filter
+class UCModel(MLEModel):
+    def __init__(self, endog):
+        k_states = 4
+        super().__init__(endog, k_states=k_states, initialization='approximate_diffuse')
+        self['design'] = np.array([[1, 1, 0, 0]])
+        self['obs_cov'] = np.array([[0]])
+
+    def update(self, params, **kwargs):
+        a, B1, B2, theta, log_sigma_e, log_sigma_u = params
+        sigma_e = np.exp(log_sigma_e)
+        sigma_u = np.exp(log_sigma_u)
+
+        transition = np.array([
+            [1, 0, 0, 0],
+            [0, B1, B2, theta],
+            [0, 1, 0, 0],
+            [0, 0, 0, 0]
+        ])
+        self['transition'] = transition
+
+        self['selection'] = np.eye(4)[:, :2]
+        self['state_cov'] = np.diag([sigma_e**2, sigma_u**2])
+
+# Estimate model
+model = UCModel(y[2:])
+initial_params = [0.01, 0.5, 0.1, 0.5, np.log(0.2), np.log(0.2)]
+res = model.fit(initial_params, method='nm', disp=False)
+filtered_states = model.smooth(res.params).filtered_state
+
+# Plot Figure 2
+plt.figure(figsize=(10,5))
+plt.plot(g[2:], label='True Trend')
+plt.plot(filtered_states[0], label='Estimated Trend')
+plt.title("Figure 2: Estimated vs Simulated Trend")
+plt.legend()
+plt.tight_layout()
+plt.savefig("Figure 2 (Top): Estimated vs Simulated Trend.png")
+plt.close()
+
+plt.figure(figsize=(10,5))
+plt.plot(c[2:], label='True Cycle')
+plt.plot(filtered_states[1], label='Estimated Cycle')
+plt.title("Figure 2 (Bottom): Estimated vs Simulated Cycle")
+plt.legend()
+plt.tight_layout()
+plt.savefig("Figure 2 (Bottom): Estimated vs Simulated Cycle.png")
+plt.close()
+
+# PART (e): Apply UC Model to Norway Real GDP
+norway_df = pd.read_csv("09170_20250419-231121.csv")
+norway_df['date'] = pd.to_datetime(norway_df['Quarter'])
+norway_df.set_index('date', inplace=True)
+y_norway = np.log(norway_df['Real mainland GDP'])
+
+model_norway = UCModel(y_norway)
+res_norway = model_norway.fit(initial_params, method='nm', disp=False)
+states_norway = model_norway.smooth(res_norway.params).filtered_state
+
+# Plot Figure 3
+plt.figure(figsize=(10,5))
+plt.plot(y_norway, label='Observed log GDP')
+plt.plot(y_norway.index, states_norway[0], label='Trend')
+plt.plot(y_norway.index, states_norway[1], label='Cycle')
+plt.title("Figure 3: Estimated Trend and Cycle for Norway")
+plt.legend()
+plt.tight_layout()
+plt.savefig("Figure_3_Norwegian_Trend_Cycle.png")
+plt.close()
+
+# PART (f): Compare Output Gap to Norges Bank
+bank_df = pd.read_csv("09171_20250419-231931.csv")
+bank_df['date'] = pd.to_datetime(bank_df['Quarter'])
+bank_df.set_index('date', inplace=True)
+
+# Interpolation and merge
+my_cycle = pd.Series(states_norway[1], index=y_norway.index)
+combined = pd.concat([my_cycle, bank_df['Norges Bank output gap']], axis=1).dropna()
+combined.columns = ['My Output Gap', 'Norges Bank']
+
+# Plot Figure 4
+plt.figure(figsize=(10,5))
+plt.plot(combined.index, combined['My Output Gap'], label='My Output Gap')
+plt.plot(combined.index, combined['Norges Bank'], label='Norges Bank')
+plt.title("Figure 4: My Output Gap vs Norges Bank")
+plt.legend()
+plt.tight_layout()
+plt.savefig("Figure_4_Output_Gap_Comparison.png")
+plt.close()
+
+# PART (g): HP Filter Comparison
+from statsmodels.tsa.filters.hp_filter import hpfilter
+cycle_hp, trend_hp = hpfilter(y_norway, lamb=1600)
+
+# Plot Figure 5
+plt.figure(figsize=(10,5))
+plt.plot(y_norway.index, states_norway[1], label='UC Cycle')
+plt.plot(y_norway.index, cycle_hp, label='HP Cycle')
+plt.title("Figure 5: Cycle Comparison – UC vs HP")
+plt.legend()
+plt.tight_layout()
+plt.savefig("Figure_5_UC_vs_HP_Cycle.png")
+plt.close()
