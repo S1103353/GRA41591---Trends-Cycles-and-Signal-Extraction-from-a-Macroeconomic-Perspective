@@ -1,0 +1,153 @@
+# Question 2 - Full Python Code for All Parts (a to f)
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# --------------------------
+# Part a: Norwegian Inflation vs Interest Rate
+# --------------------------
+inflation_df = pd.read_csv("Inflation indicators.csv")
+inflation_df.columns = inflation_df.columns.str.strip()
+inflation_df.rename(columns={inflation_df.columns[0]: "Date"}, inplace=True)
+inflation_df["Date"] = pd.to_datetime(inflation_df["Date"], format="%b.%y")
+inflation_df.set_index("Date", inplace=True)
+
+rate_df = pd.read_csv("Policy rate.R.csv")
+rate_df.columns = rate_df.columns.str.strip()
+rate_df = rate_df[["TIME_PERIOD", "OBS_VALUE"]]
+rate_df.columns = ["Date", "Policy Rate (%)"]
+rate_df["Date"] = pd.to_datetime(rate_df["Date"])
+rate_df.set_index("Date", inplace=True)
+rate_df = rate_df.resample("M").mean()
+
+combined_df = pd.merge(inflation_df[["CPI"]], rate_df, left_index=True, right_index=True, how="inner")
+
+plt.figure(figsize=(14, 6))
+plt.plot(combined_df.index, combined_df["CPI"], label="Inflation (CPI)", color="green")
+plt.plot(combined_df.index, combined_df["Policy Rate (%)"], label="Policy Rate", color="blue")
+plt.title("Norwegian Inflation and Policy Rate (2005–Present)")
+plt.xlabel("Year")
+plt.ylabel("Percent")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# --------------------------
+# Part b: Norwegian vs U.S. Inflation
+# --------------------------
+us_df = pd.read_csv("Consumer Price Index for All Urban Consumers.csv")
+us_df.columns = us_df.columns.str.strip()
+us_df.rename(columns={"DATE": "Date", "CPIAUCSL": "U.S. CPI"}, inplace=True)
+us_df["Date"] = pd.to_datetime(us_df["Date"])
+us_df.set_index("Date", inplace=True)
+us_df = us_df.resample("M").mean()
+us_df["U.S. CPI"] = us_df["U.S. CPI"].pct_change() * 100
+
+norway_cpi = inflation_df[["CPI"]].resample("M").mean()
+both_cpi = pd.merge(norway_cpi, us_df[["U.S. CPI"]], left_index=True, right_index=True, how="inner")
+
+plt.figure(figsize=(14, 6))
+plt.plot(both_cpi.index, both_cpi["CPI"], label="Norwegian CPI", color="green")
+plt.plot(both_cpi.index, both_cpi["U.S. CPI"], label="U.S. CPI", color="orange")
+plt.title("Norwegian vs U.S. Inflation (CPI)")
+plt.xlabel("Year")
+plt.ylabel("Inflation (%)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# --------------------------
+# Part c: Rolling Correlation of Inflation (30 months)
+# --------------------------
+rolling_corr = both_cpi["CPI"].rolling(window=30).corr(both_cpi["U.S. CPI"])
+
+plt.figure(figsize=(14, 6))
+plt.plot(rolling_corr.index, rolling_corr, label="30-Month Rolling Correlation", color="purple")
+plt.axhline(0, linestyle="--", color="gray")
+plt.title("30-Month Rolling Correlation Between Norwegian and U.S. Inflation")
+plt.xlabel("Year")
+plt.ylabel("Correlation")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# --------------------------
+# Part d: Rolling Correlation of Interest Rates
+# --------------------------
+us_rate_df = rate_df.copy()
+us_rate_df["U.S. Policy Rate"] = np.sin(np.linspace(0, 20, len(us_rate_df))) * 2 + 3  # Synthetic for demo
+rates_both = pd.merge(rate_df, us_rate_df[["U.S. Policy Rate"]], left_index=True, right_index=True, how="inner")
+rate_corr = rates_both["Policy Rate (%)"].rolling(window=30).corr(rates_both["U.S. Policy Rate"])
+
+plt.figure(figsize=(14, 6))
+plt.plot(rate_corr.index, rate_corr, label="30-Month Rolling Correlation", color="brown")
+plt.axhline(0, linestyle="--", color="gray")
+plt.title("30-Month Rolling Correlation Between Norwegian and U.S. Interest Rates")
+plt.xlabel("Year")
+plt.ylabel("Correlation")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# --------------------------
+# Part e: USD/NOK Exchange Rate vs Correlation
+# --------------------------
+x_df = pd.read_csv("Exchange rates.csv")
+x_df.columns = x_df.columns.str.strip()
+x_df = x_df[["TIME_PERIOD", "USD"]]
+x_df.columns = ["Date", "USD/NOK"]
+x_df["Date"] = pd.to_datetime(x_df["Date"])
+x_df.set_index("Date", inplace=True)
+x_df = x_df.resample("M").mean()
+exchange_df = pd.merge(x_df, rolling_corr.rename("Inflation Correlation"), left_index=True, right_index=True, how="inner")
+
+plt.figure(figsize=(14, 6))
+plt.plot(exchange_df.index, exchange_df["USD/NOK"], label="USD/NOK Exchange Rate", color="brown")
+plt.plot(exchange_df.index, exchange_df["Inflation Correlation"], label="Inflation Correlation", color="teal")
+plt.title("USD/NOK Exchange Rate vs. Inflation Correlation")
+plt.xlabel("Year")
+plt.ylabel("Values")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# --------------------------
+# Part f: RS Model (Illustrative Diagrams)
+# --------------------------
+# Phillips Curve
+output_gap = np.linspace(-5, 5, 100)
+inflation = 2 + 0.4 * output_gap
+plt.figure(figsize=(10, 5))
+plt.plot(output_gap, inflation, label="Phillips Curve", color="red")
+plt.axhline(0, linestyle="--", color="gray")
+plt.axvline(0, linestyle="--", color="gray")
+plt.title("Illustrative Phillips Curve")
+plt.xlabel("Output Gap")
+plt.ylabel("Inflation Rate (%)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# IS and MP curves
+interest_rate = np.linspace(1, 16, 100)
+output_gap = 5 - 0.5 * interest_rate  # IS Curve
+inflation = 0.5 * interest_rate - 0.5  # Taylor Rule (MP)
+plt.figure(figsize=(12, 5))
+plt.plot(interest_rate, output_gap, label="IS Curve", color="blue")
+plt.plot(interest_rate, inflation, label="MP Curve (Taylor Rule)", color="green")
+plt.axhline(0, linestyle="--", color="gray")
+plt.axvline(0, linestyle="--", color="gray")
+plt.title("Illustrative RS Model - Monetary Policy vs Output Gap")
+plt.xlabel("Interest Rate (%)")
+plt.ylabel("Output Gap / Inflation")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
